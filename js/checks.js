@@ -152,7 +152,10 @@
     {
       // the drawn rope: settle with nobody pulling, then a hard tug, at two frame rates
       const W = S.make({ lanes: E('easy'), rope: true, fail });
-      for (let i = 0; i < 4 * 120; i++) S.step(W, S.DT);
+      // it starts at rest: nothing whips up above the hands in the first moments
+      let top = 0;
+      for (let i = 0; i < 4 * 120; i++) { S.step(W, S.DT); if (i < 120) for (let k = 0; k < S.NN; k++) top = Math.max(top, W.rope.y[k]); }
+      const calm = top <= Math.max(...W.rope.handY[0], ...W.rope.handY[1]) + 0.05;
       const R = W.rope;
       const stretch = () => {
         let m = 0;
@@ -192,8 +195,8 @@
       const runs = [30, 60, 144].map(tug);
       const st1 = Math.max(...runs.map((r) => r.st));
       const fpsSame = runs.every((r) => r.snap && r.snap === runs[0].snap);
-      add('rope.verlet', st0 < 0.03 && st1 < 0.06 && sag > 0.05 && sag < 0.6 && ends && fpsSame,
-        `the drawn rope: ${pct(st0)} stretch at rest and at most ${pct(st1)} in a hard tug, sags ${sag.toFixed(2)} m over the mud, loose ends on the ground, the same at 30 / 60 / 144 fps`);
+      add('rope.verlet', calm && st0 < 0.03 && st1 < 0.06 && sag > 0.05 && sag < 0.6 && ends && fpsSame,
+        `the drawn rope: starts at rest (top ${top.toFixed(2)} m), ${pct(st0)} stretch at rest and at most ${pct(st1)} in a hard tug, sags ${sag.toFixed(2)} m over the mud, loose ends on the ground, the same at 30 / 60 / 144 fps`);
     }
 
     // ------------------------------------------------------------ fair tapping detection
@@ -215,16 +218,16 @@
       let ok = true, most = 0;
       const detail = [];
       for (const rate of [6, 10, 15, 25]) {
-        const g = P(E('easy'), [drummer(), masher({ rate, seed: rate })]);
+        const g = P(E('easy'), [drummer(), masher({ rate, seed: rate, from: 0.02 })]);
         const m = g.W.lanes[1].stats, beats = g.W.lanes[0].stats.strokes;
         most = Math.max(most, m.strokes / Math.max(1, beats));
-        if (g.res.winner === 1 || m.strokes > beats + 1) ok = false;
+        if (g.res.winner === 1 || m.strokes > beats + 1 || m.slips) ok = false;
         detail.push(`${rate}/s ${g.res.winner === 0 ? 'loses' : g.res.winner === 1 ? 'WINS' : 'draws'}`);
       }
       const slow = P(E('easy'), [masher({ rate: 4, seed: 21 }), []]).W.lanes[0].stats;
       const power = slow.power / Math.max(1, slow.strokes);
       ok = ok && power >= 0.74;
-      add('tap.one-per-beat', ok, `EASY: tapping as fast as you can never beats tapping with the drum (${detail.join(', ')}; at most ${most.toFixed(2)} heaves per beat), and 4 taps a second still pulls at ${pct(power)}`);
+      add('tap.one-per-beat', ok, `EASY: tapping as fast as you can never beats tapping with the drum (${detail.join(', ')}; at most ${most.toFixed(2)} heaves per beat, never a slip), and 4 taps a second still pulls at ${pct(power)}`);
     }
     {
       let wins = 0, slips = 0;

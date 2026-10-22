@@ -90,7 +90,9 @@
     lastW = w;
     lastH = h;
     SC.fit(w, h);
+    if (G.state === 'results' && G.cel && G.cel.x != null) SC.view('win', { x: G.cel.x, side: sideCard() });
   }
+  const sideCard = () => window.innerHeight <= 560 && window.innerWidth / window.innerHeight > 1.3;
 
   function buildLogo() {
     const t = window.TW_TITLE || 'TT Tug of War';
@@ -170,6 +172,7 @@
     if (G.state === 'title') stageTitle();
     buddyReset();
     $('pads').className = n === 2 ? 'two' : 'one';
+    document.body.classList.toggle('two', n === 2);
     setKeyLabels();
   }
   // in 1 player Foxy's team is the one across from yours in the list
@@ -303,7 +306,7 @@
     G.splashed.clear();
     G.W = S.make({ lanes: G.sides.map((sd) => ({ level: sd.level, cpu: sd.cpu, seed: (G.seed + G.M.n * 101 + sd.lane * 7919) >>> 0 })), rope: true, handY: handY() });
     if (B.onRope || B.want) { S.input(G.W, 0, 'B+', -S.COUNT); B.onRope = true; B.want = false; }
-    G.bots.forEach((b, p) => { if (b) feedBot(p, b); });
+    G.bots.forEach((b, p) => { if (b && !G.sides[p].cpu) feedBot(p, b); });
     G.state = 'play';
     G.lastBeat = -1;
     G.cd = null;
@@ -444,7 +447,8 @@
       const sd = G.sides[win];
       const xs = sd.A.map((A) => A.holder.position.x);
       const cx = xs.reduce((p, c) => p + c, 0) / xs.length;
-      SC.view('win', { x: cx });
+      G.cel.x = cx;
+      SC.view('win', { x: cx, side: sideCard() });
       SC.fx.confetti(cx, 4.5, 0, 160);
       sfx('fanfare');
       sfx('cheer', true);
@@ -547,6 +551,7 @@
   function buddyBye() {
     if (!B.A || B.state === 'away' || B.state === 'bye') return;
     if (B.onRope && G.W && !G.W.over) S.input(G.W, 0, 'B-', S.now(G.W));
+    else if (G.W && G.W.over) G.W.lanes[0].bro = false; // the round is over: he just lets go of the drawn rope
     B.onRope = false;
     B.want = false;
     B.state = 'bye';
@@ -746,6 +751,7 @@
         }
         SC.animPuller(A, st, dt);
         if (st.mode === 'pull' || st.mode === 'walk' || st.mode === 'skid') pinToHands(A, lane, j);
+        else if (W.rope && G.state === 'results') { W.rope.handY[lane][j] = 0.05; if (W.rope.handDX) W.rope.handDX[lane][j] = 0; } // everyone lets go
         else if (W.rope && W.rope.handDX) W.rope.handDX[lane][j] = 0;
       });
     });
@@ -818,6 +824,7 @@
 
   function tick(dt) {
     G.dtNow = dt;
+    if (window.innerWidth !== lastW || window.innerHeight !== lastH) resize(); // a resize event doesn't always come
     if (G.state === 'paused') { SC.update(0, G.W ? G.W.x : 0); return; }
     const W = G.W;
     if (W) {
@@ -838,7 +845,6 @@
     requestAnimationFrame(loop);
     const dt = Math.min(0.05, last ? (now - last) / 1000 : 1 / 60);
     last = now;
-    if (window.innerWidth !== lastW || window.innerHeight !== lastH) resize();
     if (!G.held) tick(dt);
     SC.render();
   }
@@ -912,11 +918,12 @@
         buddyReset();
       }
       if (opts.seed != null) G.seed = opts.seed >>> 0;
+      G.bots = [null, null];
       startMatch();
       return this.info();
     },
     // a scripted captain for player p: { kind: 'drummer' | 'masher' | 'held', rate, sd, miss, seed } (see js/checks.js)
-    bot(p, o) { G.bots[p] = o || null; if (o && G.W && !G.demo) feedBot(p, o); },
+    bot(p, o) { G.bots[p] = o || null; if (o && G.W && !G.demo && !G.sides[p].cpu) feedBot(p, o); },
     press(p, repeat) { pull(p, !!repeat); },
     title() { toTitle(); },
     again() { startMatch(); },

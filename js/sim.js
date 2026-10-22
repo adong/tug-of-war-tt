@@ -36,10 +36,10 @@
 
   // how a tap is graded: [how far from the beat (s), strength, word]
   const LEVEL = {
-    // EASY: every tap is near some beat, the first one per beat counts, the rest are ignored
-    easy: { win: BEAT / 2, grades: [[0.12, 1, 'PERFECT'], [0.24, 0.9, 'GREAT'], [Infinity, 0.75, 'GOOD']], extra: 'ignore' },
+    // EASY: every tap counts for the nearest beat (even one right after GO), the first one per beat, the rest are ignored
+    easy: { win: Infinity, late: BEAT / 2, grades: [[0.12, 1, 'PERFECT'], [0.24, 0.9, 'GREAT'], [Infinity, 0.75, 'GOOD']], extra: 'ignore' },
     // NORMAL: tap with the drum; far off the beat is a miss, a second tap on the same beat slips
-    normal: { win: 0.24, grades: [[0.07, 1, 'PERFECT'], [0.15, 0.8, 'GOOD'], [0.24, 0.5, 'OK']], extra: 'slip' },
+    normal: { win: 0.24, late: 0.24, grades: [[0.07, 1, 'PERFECT'], [0.15, 0.8, 'GOOD'], [0.24, 0.5, 'OK']], extra: 'slip' },
   };
   // the CPU captains (Foxy): how often they skip a beat, and how far off the beat they tap
   const CPU = { easy: { miss: 0.3, sd: 0.2 }, normal: { miss: 0.14, sd: 0.1 } };
@@ -169,7 +169,7 @@
       }
       // a beat with no heave: the combo is gone
       const lv = LEVEL[L.level];
-      while (t1 > 0 && beatT(L.missed + 1) + lv.win < t1 && !W.over) {
+      while (t1 > 0 && beatT(L.missed + 1) + lv.late < t1 && !W.over) {
         L.missed++;
         if (L.used < L.missed) { L.combo = 0; L.stats.misses++; W.log.push({ t: beatT(L.missed), lane: L.i, kind: 'miss' }); }
       }
@@ -224,11 +224,29 @@
   function makeRope(handY) {
     // handY: how high each puller holds the rope; handDX: the game nudges each pin to where the drawn hands are
     const R = { x: new Float64Array(NN), y: new Float64Array(NN), px: new Float64Array(NN), py: new Float64Array(NN), pin: new Int8Array(NN), handY: handY || [[0.95, 0.85, 0.85, 0.8], [0.95, 0.85, 0.85, 0.8]], handDX: null };
+    // start at rest, so nothing whips about: straight from hands to hands, and each loose end running down from the
+    // last puller's hands to the grass and along it (every segment exactly NODE long)
+    const hy = R.handY, out = GAP + 2 * SP;
+    const at = (s) => {
+      const li = s < 0 ? 0 : 1, a = Math.abs(s);
+      if (a <= GAP) return hy[0][0] + ((s + GAP) / (2 * GAP)) * (hy[1][0] - hy[0][0]);
+      const j = Math.min(1, Math.floor((a - GAP) / SP)), u = (a - GAP - j * SP) / SP;
+      return hy[li][j] + u * (hy[li][j + 1] - hy[li][j]);
+    };
     for (let i = 0; i < NN; i++) {
       const s = -SMAX + i * NODE;
-      R.x[i] = R.px[i] = s * (1 - SLACK);
-      R.y[i] = R.py[i] = Math.abs(s) > GAP + 2 * SP + 0.3 ? FLOOR : 0.9;
+      if (Math.abs(s) <= out + 1e-9) { R.x[i] = s * (1 - SLACK); R.y[i] = at(s); }
     }
+    for (const side of [-1, 1]) {
+      let k = nodeOf(side * out), x = R.x[k], y = R.y[k];
+      for (k += side; k >= 0 && k < NN; k += side) {
+        if (y > FLOOR + 1e-9) { const dy = Math.min(y - FLOOR, NODE * 0.87); x += side * Math.sqrt(NODE * NODE - dy * dy); y -= dy; } else x += side * NODE;
+        R.x[k] = x;
+        R.y[k] = y;
+      }
+    }
+    R.px.set(R.x);
+    R.py.set(R.y);
     return R;
   }
   function pinsOf(W) {

@@ -262,21 +262,20 @@
     const mode = st.mode || 'pull';
     const pulling = mode === 'pull' || mode === 'walk' || mode === 'skid';
     A.phase += dt * (mode === 'walk' ? 7 : mode === 'skid' ? 4 : 6);
-    Kit.people.pose(A.p, A.phase, pulling ? (mode === 'walk' ? 'walk' : 'grab') : mode, k);
+    Kit.people.pose(A.p, A.phase, pulling ? 'grab' : mode, k);
     let lean = 0;
     if (pulling) {
-      const hvv = st.heave || 0;
-      // hold the rope low, front foot dug in, and lean back (more on a heave)
-      const to = (o, prop, v) => { o[prop] += (v - o[prop]) * k; };
-      to(A.p.armL.rotation, 'x', 1.18 - hvv * 0.25);
-      to(A.p.armR.rotation, 'x', 1.18 - hvv * 0.25);
-      to(A.p.armL.rotation, 'z', -0.12);
-      to(A.p.armR.rotation, 'z', 0.12);
-      if (mode !== 'walk') {
-        to(A.p.legL.rotation, 'x', mode === 'skid' ? 0.75 + Math.sin(A.phase * 3) * 0.08 : 0.55);
-        to(A.p.legR.rotation, 'x', -0.3);
-      }
-      to(A.p.hips.rotation, 'x', 0.12);
+      // hold the rope low, front foot dug in, and lean back (more on a heave). Set outright, not eased, so the hands
+      // are always where the rope's pins expect them, whatever the team is doing
+      const hvv = st.heave || 0, P = A.p, sw = Math.sin(A.phase);
+      P.armL.rotation.x = P.armR.rotation.x = 1.0 - hvv * 0.2;
+      P.armL.rotation.z = -0.12;
+      P.armR.rotation.z = 0.12;
+      if (mode === 'walk') { P.legL.rotation.x = 0.3 + sw * 0.4; P.legR.rotation.x = -0.1 - sw * 0.4; }
+      else if (mode === 'skid') { P.legL.rotation.x = 0.75 + Math.sin(A.phase * 3) * 0.08; P.legR.rotation.x = -0.2; }
+      else { P.legL.rotation.x = 0.55; P.legR.rotation.x = -0.3; }
+      P.hips.rotation.x = 0.12;
+      P.hips.position.y = P.hipY;
       lean = (st.lean == null ? 0.3 : st.lean) + hvv * 0.18;
     } else if (st.lean != null) lean = st.lean;
     const cur = A.tilt.rotation.z, want = face * lean;
@@ -353,14 +352,16 @@
   };
 
   // ---------------------------------------------------------------- camera
+  const edge = () => Math.min(0.25, 64 / (cam.w || 1000)); // the kit's round buttons cover about 64 px on the left
   function fit(w, h) {
+    cam.w = w;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     cam.aspect = w / h;
     camera.updateProjectionMatrix();
   }
   // 'play' follows the ribbon a little; 'win' frames the winning team; 'title' sways gently
-  function view(mode, o = {}) { cam.mode = mode; if (o.x != null) cam.wx = o.x; if (o.snap) cam.snap = true; }
+  function view(mode, o = {}) { cam.mode = mode; if (o.x != null) cam.wx = o.x; cam.side = !!o.side; if (o.snap) cam.snap = true; }
   const want = { p: new T.Vector3(), l: new T.Vector3() };
   function aim(dt, ropeX) {
     const a = cam.aspect, tanH = Math.tan((camera.fov * Math.PI) / 360);
@@ -372,17 +373,21 @@
       want.p.set(sw, 2.2 + d * 0.2, d + 0.5);
       want.l.set(sw * 0.3, 1.6, -0.5);
     } else if (cam.mode === 'win') {
+      // the winners in the top half (the card sits below), or on the left of a short wide screen (the card on the right)
       const need = steep ? 7.5 : 10.5;
       const d = Math.max(7.5, need / (2 * tanH * a));
-      want.p.set(cam.wx, 1.6 + d * 0.16, d);
-      want.l.set(cam.wx, 1.15, -0.3);
+      const sx = cam.side ? need * 0.3 : 0;
+      want.p.set(cam.wx + sx, 1.3 + d * 0.1, d);
+      want.l.set(cam.wx + sx, cam.side ? 1.1 : -0.5, -0.3);
     } else {
-      // keep both teams in view: about 14.5 m wide (11.5 m on a phone held upright)
-      const need = steep ? 11.5 : 14.5;
-      const d = Math.max(10, need / (2 * tanH * a));
-      const cx = ropeX * 0.55;
+      // keep both teams in view: about 14.5 m wide (11 m on a phone held upright), in the part of the screen right of
+      // the kit's round buttons; on a phone held upright, above them too (the rope sits in the upper middle)
+      const need = steep ? 11 : 14.5;
+      const free = 1 - edge();
+      const d = Math.max(10, need / (2 * tanH * a * free));
+      const cx = ropeX * 0.55 - (1 - free) * 0.5 * (2 * tanH * a * d);
       want.p.set(cx, 2.4 + d * (steep ? 0.45 : 0.2), d * (steep ? 0.9 : 1));
-      want.l.set(cx, steep ? 0.4 : 0.85, -0.6);
+      want.l.set(cx, steep ? -2.2 : 0.85, -0.6);
     }
     const k = cam.snap ? 1 : 1 - Math.exp(-3.5 * dt);
     cam.snap = false;
