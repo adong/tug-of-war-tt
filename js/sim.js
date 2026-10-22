@@ -23,13 +23,13 @@
   const FIRST = 0.7;           // the first beat after GO; beat k is at FIRST + k * BEAT
   const COUNT = 3;             // READY, HEAVE, PULL! before GO (time runs from -COUNT)
   const LINE = 2.0;            // pull the ribbon this far over to your side to win
-  const LIMIT = 40;            // a round ends after this many seconds (the ribbon's side wins, or a draw)
+  const LIMIT = 30;            // a round ends after this many seconds (the ribbon's side wins, or a draw)
   const GAP = 2.8, SP = 1.0;   // the captain's hands are GAP from the ribbon, each teammate SP further back
   const POWER = [1, 0.6, 0.6]; // the captain, then his two animal teammates
   const BRO = 0.8;             // the brother, when he joins your rope (the anchor, at the back)
   const PULSE = 0.45;          // one heave lasts this long
   const DELAY = 0.07;          // each teammate heaves this long after the one in front of him
-  const ACC = 3.8, DAMP = 3, VMAX = 2.5;
+  const ACC = 2, DAMP = 3, VMAX = 2.5;
   const DEBOUNCE = 0.04;
   const COMBO = 5, COMBO_UP = 0.05; // in-a-row good heaves, up to +25 %
   const YANK = 1.6;            // after a win the losers get yanked this many m/s for a second (just for show)
@@ -222,7 +222,8 @@
   const pinS = (side, j) => side * (GAP + j * SP); // j = 0, 1, 2 the team, 3 the brother (anchor)
   const nodeOf = (s) => Math.round((s + SMAX) / NODE);
   function makeRope(handY) {
-    const R = { x: new Float64Array(NN), y: new Float64Array(NN), px: new Float64Array(NN), py: new Float64Array(NN), pin: new Int8Array(NN), handY: handY || [[0.95, 0.85, 0.85, 0.8], [0.95, 0.85, 0.85, 0.8]] };
+    // handY: how high each puller holds the rope; handDX: the game nudges each pin to where the drawn hands are
+    const R = { x: new Float64Array(NN), y: new Float64Array(NN), px: new Float64Array(NN), py: new Float64Array(NN), pin: new Int8Array(NN), handY: handY || [[0.95, 0.85, 0.85, 0.8], [0.95, 0.85, 0.85, 0.8]], handDX: null };
     for (let i = 0; i < NN; i++) {
       const s = -SMAX + i * NODE;
       R.x[i] = R.px[i] = s * (1 - SLACK);
@@ -236,7 +237,7 @@
       for (let j = 0; j < 4; j++) {
         if (j < 3 ? j >= L.members : !L.bro) continue;
         const s = pinS(L.side, j);
-        list.push({ i: nodeOf(s), x: W.x + s * (1 - SLACK), y: R.handY[li][j] });
+        list.push({ i: nodeOf(s), x: W.x + s * (1 - SLACK) + (R.handDX ? R.handDX[li][j] : 0), y: R.handY[li][j] });
       }
     });
     return list;
@@ -274,7 +275,7 @@
   }
 
   TW.sim = {
-    DT, BEAT, FIRST, COUNT, LINE, LIMIT, GAP, SP, POWER, BRO, PULSE, DELAY, VMAX, DEBOUNCE, LEVEL, CPU, NODE, SMAX, NN, SLACK, TAIL,
+    DT, BEAT, FIRST, COUNT, LINE, LIMIT, GAP, SP, POWER, BRO, PULSE, DELAY, ACC, DAMP, VMAX, DEBOUNCE, LEVEL, CPU, NODE, SMAX, NN, SLACK, TAIL,
     beatT, make, input, now, step, advance, force, rng, gauss, pinS, nodeOf, pinsOf,
     // the beat clock: which beat is nearest to time t, and how far through the current beat we are (0..1)
     nearBeat: (t) => Math.max(0, Math.round((t - FIRST) / BEAT)),

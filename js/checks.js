@@ -110,7 +110,7 @@
       for (let i = 0; i < (S.COUNT + 5) * 120; i++) S.step(W, S.DT);
       // the exact answer: dv/dt = ACC*F - DAMP*v moves the ribbon ACC/DAMP times the heave's impulse
       const amp = (1 + 0.05) * S.POWER.reduce((a, b) => a + b, 0);
-      const want = (3.8 / 3) * amp * (2 * S.PULSE / Math.PI);
+      const want = (S.ACC / S.DAMP) * amp * (2 * S.PULSE / Math.PI);
       const err = Math.abs(W.x - want) / want;
       add('rope.settle', Math.abs(W.v) < 1e-4 && err < 0.02, `one perfect heave alone moves the ribbon ${W.x.toFixed(3)} m (exact ${want.toFixed(3)}), then it stops (v ${W.v.toExponential(1)})`);
     }
